@@ -44,7 +44,7 @@ class WhisperStreamingTranscriber:
         self.tokenizer = get_tokenizer(
             self.model.is_multilingual,
             language=config.language,
-            task="transcribe",
+            task="translate",
         )
         self._set_dtype(config.fp16)
         self.input_stride: Final[int] = exact_div(
@@ -66,7 +66,7 @@ class WhisperStreamingTranscriber:
         best_of: Optional[int],
     ) -> DecodingOptions:
         return DecodingOptions(
-            task="transcribe",
+            task="translate",
             language=self.config.language,
             temperature=t,
             sample_len=None,
