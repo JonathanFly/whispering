@@ -1,9 +1,9 @@
 [misc]
-stable_version = "0.5.0"
+stable_version = "0.6.2"
 
 [tool.poetry]
 name = "whispering"
-version = "0.6.0dev0"
+version = "0.6.3dev0"
 description = "Streaming transcriber with whisper"
 license = "MIT"
 authors = ["Yuta Hayashibe <yuta@hayashibe.jp>"]
@@ -31,7 +31,7 @@ toml = "^0.10.2"
 pytest = "^7.1.3"
 
 [build-system]
-requires = ["poetry-core"]
+requires = ["poetry-core>=1.3.2"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]

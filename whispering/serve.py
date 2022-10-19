@@ -3,15 +3,19 @@
 import asyncio
 import json
 from logging import getLogger
-from typing import Optional
+from typing import Final, Optional
 
 import numpy as np
 import websockets
 from websockets.exceptions import ConnectionClosedOK
 
-from whispering.transcriber import Context, WhisperStreamingTranscriber
+from whispering.schema import CURRENT_PROTOCOL_VERSION, Context
+from whispering.transcriber import WhisperStreamingTranscriber
 
 logger = getLogger(__name__)
+
+MIN_PROTOCOL_VERSION: Final[int] = int("000_006_000")
+MAX_PROTOCOL_VERSION: Final[int] = CURRENT_PROTOCOL_VERSION
 
 
 async def serve_with_websocket_main(websocket):
@@ -41,10 +45,28 @@ async def serve_with_websocket_main(websocket):
                     )
                 )
                 return
+
+            if ctx.protocol_version < MIN_PROTOCOL_VERSION:
+                await websocket.send(
+                    json.dumps(
+                        {
+                            "error": f"protocol_version is older than {MIN_PROTOCOL_VERSION}"
+                        }
+                    )
+                )
+            elif ctx.protocol_version > MAX_PROTOCOL_VERSION:
+                await websocket.send(
+                    json.dumps(
+                        {
+                            "error": f"protocol_version is newer than {MAX_PROTOCOL_VERSION}"
+                        }
+                    )
+                )
+                return
+
             continue
 
         logger.debug(f"Message size: {len(message)}")
-        audio = np.frombuffer(message, dtype=np.float32)
         if ctx is None:
             await websocket.send(
                 json.dumps(
@@ -54,6 +76,7 @@ async def serve_with_websocket_main(websocket):
                 )
             )
             return
+        audio = np.frombuffer(message, dtype=np.dtype(ctx.data_type)).astype(np.float32)
         for chunk in g_wsp.transcribe(
             audio=audio,  # type: ignore
             ctx=ctx,

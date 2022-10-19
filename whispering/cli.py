@@ -7,7 +7,7 @@ import sys
 from enum import Enum
 from logging import DEBUG, INFO, basicConfig, getLogger
 from pathlib import Path
-from typing import Iterator, Optional, Union
+from typing import Iterator, List, Optional, Union
 
 import sounddevice as sd
 import torch
@@ -16,7 +16,12 @@ from whisper.audio import N_FRAMES, SAMPLE_RATE
 from whisper.tokenizer import LANGUAGES, TO_LANGUAGE_CODE
 
 from whispering.pbar import ProgressBar
-from whispering.schema import Context, StdoutWriter, WhisperConfig
+from whispering.schema import (
+    CURRENT_PROTOCOL_VERSION,
+    Context,
+    StdoutWriter,
+    WhisperConfig,
+)
 from whispering.serve import serve_with_websocket
 from whispering.transcriber import WhisperStreamingTranscriber
 from whispering.websocket_client import run_websocket_client
@@ -140,12 +145,16 @@ def get_opts() -> argparse.Namespace:
         default=[],
     )
     group_ctx.add_argument(
-        "--allow-padding",
-        action="store_true",
+        "--vad",
+        type=float,
+        help="Threshold of VAD",
+        default=0.5,
     )
     group_ctx.add_argument(
-        "--no-vad",
-        action="store_true",
+        "--max_nospeech_skip",
+        type=int,
+        help="Maximum number of skip to analyze because of nospeech",
+        default=16,
     )
 
     group_misc = parser.add_argument_group("Other options")
@@ -214,10 +223,11 @@ def get_wshiper(*, opts) -> WhisperStreamingTranscriber:
 
 def get_context(*, opts) -> Context:
     ctx = Context(
+        protocol_version=CURRENT_PROTOCOL_VERSION,
         beam_size=opts.beam_size,
         temperatures=opts.temperature,
-        allow_padding=opts.allow_padding,
-        vad=not opts.no_vad,
+        max_nospeech_skip=opts.max_nospeech_skip,
+        vad_threshold=opts.vad,
     )
     logger.debug(f"Context: {ctx}")
     return ctx
@@ -230,26 +240,36 @@ def show_devices():
             print(f"{i}: {device['name']}")
 
 
-def is_valid_arg(opts) -> bool:
+def is_valid_arg(
+    *,
+    args: List[str],
+    mode: str,
+) -> bool:
     keys = []
-    if opts.mode == Mode.server.value:
-        keys = [
-            "mic",
-            "beam_size",
-            "temperature",
-            "allow_padding",
-            "no-vad",
-        ]
-    elif opts.mode == Mode.mic.value:
-        keys = [
-            "host",
-            "port",
-        ]
+    if mode == Mode.server.value:
+        keys = {
+            "--mic",
+            "--beam_size",
+            "-b",
+            "--temperature",
+            "-t",
+            "--num_block",
+            "-n",
+            "--vad",
+            "--max_nospeech_skip",
+            "--output",
+            "--show-devices",
+            "--no-progress",
+        }
+    elif mode == Mode.mic.value:
+        keys = {
+            "--host",
+            "--port",
+        }
 
-    for key in keys:
-        _val = vars(opts).get(key)
-        if _val is not None and _val is not False:
-            sys.stderr.write(f"{key} is not accepted option for {opts.mode} mode\n")
+    for arg in args:
+        if arg in keys:
+            sys.stderr.write(f"{arg} is not accepted option for {mode} mode\n")
             return False
     return True
 
@@ -272,7 +292,10 @@ def main() -> None:
     ):
         opts.mode = Mode.server.value
 
-    if not is_valid_arg(opts):
+    if not is_valid_arg(
+        args=sys.argv[1:],
+        mode=opts.mode,
+    ):
         sys.exit(1)
 
     if opts.mode == Mode.client.value:
